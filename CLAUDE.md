@@ -1,5 +1,50 @@
 This file provides guidance to agentic coding tools when working with code in this repository.
 
+## CRITICAL: This Repository Is a Fork, and Every Change Needs a Fork ADR
+
+This repo is a fork. `origin` is the fork (`Fryuni/cirrus`); `upstream` is the original project (`mirror/cirrus`). Upstream is merged in periodically.
+
+**EVERY change made on the fork MUST have an ADR in `docs/fork-adr/` explaining the reasoning and intention behind it.** That covers features, bug fixes, refactors, dependency or config changes, tooling, and edits to docs and this file. The only exceptions are commits that come from upstream unchanged.
+
+- Write or update the ADR **in the same commit or PR as the change**. A fork change without an ADR is incomplete.
+- Record the **intention**, not just the diff: the problem, what must stay true afterwards, and why the fork diverges from upstream. Name the files and commits involved, but treat them as pointers. The intention is what the ADR protects.
+- One ADR per intention. If a later change serves an intention that already has an ADR, update that ADR instead of creating a new one.
+- These ADRs are mandatory. The "offer ADRs sparingly" guidance in `/domain-modeling` applies only to ordinary design decisions in `docs/adr/`, not to `docs/fork-adr/`.
+
+**Why:** when merging upstream, the fork's code may be thrown away in favour of upstream's. For example, upstream may ship the same feature with a different implementation. The ADR is how you tell whether the fork's _intention_ still holds after the merge, even when its exact code is gone.
+
+**When merging from upstream:**
+
+1. Read every `docs/fork-adr/` ADR whose status is `active`.
+2. For each one touched by the merge (conflicts, or upstream now covering the same ground), choose one: keep the fork implementation, adopt upstream's if it satisfies the stated intention, or adapt upstream's until it does.
+3. Record the outcome in that ADR. If upstream now fully covers it, set its status to `upstream` and note the upstream commit or PR. Never drop a fork intention silently.
+
+**Fork ADR format:** `docs/fork-adr/NNNN-slug.md`, numbered sequentially (scan for the highest number and add one):
+
+```md
+---
+status: active # active | upstream (now covered by upstream) | withdrawn
+---
+
+# {Short title}
+
+## Intent
+
+{What the fork needs to be true, and why. This must survive any re-implementation.}
+
+## Reasoning
+
+{Why this approach, and why it diverges from upstream. Note rejected alternatives if they're non-obvious.}
+
+## Implementation
+
+{Pointers: files, commits, PRs. Expected to go stale. The intent is authoritative.}
+
+## Upstream reconciliation
+
+{Optional, appended during upstream merges: date, upstream ref, what was decided.}
+```
+
 ## CRITICAL: Working Directory and Plan Document
 
 **ALWAYS verify your current working directory before operating on files:**
@@ -252,3 +297,17 @@ Support for importing repositories via CAR file:
 2. POST CAR bytes to `/xrpc/com.atproto.repo.importRepo`
 3. PDS validates and imports all blocks
 4. Repository initialized with imported state
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in the fork's Forgejo repo (`origin`, `git.rudd-agama.ts.net/Fryuni/cirrus`), managed with the `fj` CLI. Never file them on upstream. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Uses the five default triage labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one root `GLOSSARY.md` and `docs/adr/`, plus the mandatory fork ADRs in `docs/fork-adr/`. See `docs/agents/domain.md`.
