@@ -1,0 +1,124 @@
+# Fork releases: every push to main publishes all public workspace packages to
+# the owner's Forgejo npm registry as <version>-fork.<N>, where N counts the
+# commits on the fork that are not on upstream (docs/fork-adr/0003-forgejo-package-releases.md).
+# Pull requests run the same build and a dry-run publish.
+name: Publish fork packages
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+# Forgejo only honours workflow-level concurrency. Releases must not cancel each
+# other: a cancelled run would leave its fork number unpublished.
+concurrency:
+  group: publish-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPOSITORY: mirror/cirrus
+  UPSTREAM_BRANCH: main
+
+defaults:
+  run:
+    # Forgejo ignores `permissions:` and gives every step a repository write
+    # token. Install and build steps run third-party code and never need it.
+    shell: env -u GITHUB_TOKEN -u FORGEJO_TOKEN -u ACTIONS_RUNTIME_TOKEN bash --noprofile --norc -eo pipefail {0}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: https://code.forgejo.org/actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Count fork commits
+        id: fork
+        shell: bash --noprofile --norc -eo pipefail {0}
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          auth="$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraHeader GIT_CONFIG_VALUE_0="Authorization: basic $auth"
+          git fetch --no-tags "$GITHUB_SERVER_URL/$UPSTREAM_REPOSITORY.git" \
+            "+refs/heads/$UPSTREAM_BRANCH:refs/remotes/upstream/$UPSTREAM_BRANCH"
+          n="$(git rev-list --count "refs/remotes/upstream/$UPSTREAM_BRANCH..HEAD")"
+          echo "$n commits on the fork are not on $UPSTREAM_REPOSITORY@$UPSTREAM_BRANCH"
+          echo "n=$n" >> "$GITHUB_OUTPUT"
+          # Runs are serialized, so only a re-run of an older push can find a
+          # newer main. It still publishes its missing versions, but must not
+          # move `latest` back.
+          tip="$(git ls-remote "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" refs/heads/main | cut -f1)"
+          if [ "$tip" = "$GITHUB_SHA" ]; then
+            echo "dist_tag=latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "main is at ${tip:-nothing}, not $GITHUB_SHA; publishing without moving latest"
+            echo "dist_tag=previous" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node
+        uses: https://code.forgejo.org/actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+
+      # pnpm/action-setup has no mirror on this instance, and corepack's bundled
+      # signing keys lag behind pnpm releases, so install the pinned version.
+      - name: Install pnpm
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Before the build: the PDS embeds its package version in dist.
+      - name: Set fork versions
+        env:
+          FORK_N: ${{ steps.fork.outputs.n }}
+        run: node .forgejo/ci/set-fork-versions.mjs "$FORK_N"
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Check
+        run: pnpm run check
+
+      - name: Publish
+        shell: bash --noprofile --norc -eo pipefail {0}
+        env:
+          EVENT: ${{ github.event_name }}
+          DIST_TAG: ${{ steps.fork.outputs.dist_tag }}
+          # Pull requests never see the token, even from branches on this repo.
+          PACKAGES_TOKEN: ${{ github.event_name == 'push' && secrets.PACKAGES_TOKEN || '' }}
+        run: |
+          if [ "$EVENT" = push ] && [ -z "$PACKAGES_TOKEN" ]; then
+            echo "error: the PACKAGES_TOKEN secret (a token with write:package scope) is not set" >&2
+            exit 1
+          fi
+          registry="$GITHUB_SERVER_URL/api/packages/$GITHUB_REPOSITORY_OWNER/npm/"
+          npmrc="$RUNNER_TEMP/npmrc"
+          {
+            echo "registry=$registry"
+            echo "@getcirrus:registry=$registry"
+            if [ -n "$PACKAGES_TOKEN" ]; then
+              echo "//${registry#*://}:_authToken=$PACKAGES_TOKEN"
+            fi
+          } > "$npmrc"
+          publish() {
+            env -u GITHUB_TOKEN -u FORGEJO_TOKEN -u ACTIONS_RUNTIME_TOKEN NPM_CONFIG_USERCONFIG="$npmrc" \
+              pnpm publish --recursive --no-git-checks --ignore-scripts --tag "$DIST_TAG" "$@"
+          }
+
+          if [ "$EVENT" != push ]; then
+            # Pack every package, even versions main has already published.
+            publish --dry-run --force
+            exit 0
+          fi
+          # Every version must be new before anything is published. --force
+          # then stops pnpm from silently skipping a version that appeared
+          # since: the registry rejects it and the run fails instead.
+          REGISTRY="$registry" TOKEN="$PACKAGES_TOKEN" node .forgejo/ci/check-unpublished.mjs
+          publish --force
