@@ -13,21 +13,26 @@
 		},
 		"packages/pds": {
 			"ignore": ["scripts/**", "test/fixtures/**", "e2e/fixture/**"],
-			"ignoreDependencies": [
-				"tsx",
-				"vite",
-				"@cloudflare/vite-plugin",
-				"@atproto/common",
-				"@atproto/common-web"
-			]
+			"ignoreDependencies": ["tsx", "vite", "@cloudflare/vite-plugin"]
 		},
 		"packages/spaces": {
 			"ignore": ["test/fixtures/**"],
 			"ignoreDependencies": [
 				"wrangler",
 				"@atproto/common",
-				"@atproto/common-web"
+				"@atproto/common-web",
+				"@noble/curves",
+				"@noble/hashes",
+				"iso-datestring-validator",
+				"multiformats",
+				"pino",
+				"uint8arrays",
+				"varint",
+				"zod"
 			]
+		},
+		"packages/oauth-provider": {
+			"ignoreDependencies": ["@atproto/did", "iso-datestring-validator"]
 		},
 		"packages/space-conformance": {
 			"ignoreDependencies": [

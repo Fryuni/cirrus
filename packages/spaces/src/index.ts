@@ -66,6 +66,10 @@ export {
 	NOTIFY_REGISTRATION_DAYS,
 } from "./schema.js";
 
+// Re-exported so the PDS needn't depend on @atproto/space, which this
+// package inlines (see docs/fork-adr/0004-inline-spaces-alpha-deps.md).
+export { createSpaceToken, spaceHostAud } from "@atproto/space";
+
 export { createServiceJwt } from "./service-jwt.js";
 export type { ServiceJwtParams } from "./service-jwt.js";
 

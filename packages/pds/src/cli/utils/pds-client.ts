@@ -673,7 +673,12 @@ export class PDSClient {
 				}),
 			);
 		} catch (err) {
-			if (err instanceof ClientResponseError && err.status === 404) {
+			// Spec-conformant PDSes (Cirrus included) answer a missing record
+			// with 400 RecordNotFound; older ones used a bare 404.
+			if (
+				err instanceof ClientResponseError &&
+				(err.status === 404 || err.error === "RecordNotFound")
+			) {
 				return null;
 			}
 			throw err;

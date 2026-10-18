@@ -7,14 +7,17 @@ import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 // cannot sign or verify under workerd's nodejs_compat in the vitest pool;
 // production builds pick jose's `workerd` condition (the WebCrypto build).
 // Redirect only THOSE importers to the browser build — the PDS's own
-// session code uses jose@6 and must keep resolving normally.
-const spaceRequire = createRequire(
-	createRequire(import.meta.url).resolve("@atproto/space"),
+// session code uses jose@6 and must keep resolving normally. @getcirrus/spaces
+// inlines @atproto/space into its dist, so its dist counts as an importer too.
+const spacesRequire = createRequire(
+	createRequire(import.meta.url).resolve("@getcirrus/spaces"),
 );
 const jose5Browser = join(
-	dirname(spaceRequire.resolve("jose/package.json")),
+	dirname(spacesRequire.resolve("jose/package.json")),
 	"dist/browser/index.js",
 );
+const jose5Importer =
+	/@atproto[+/](space|jwk)|[\\/](@getcirrus[\\/]spaces|packages[\\/]spaces)[\\/]dist[\\/]/;
 
 export default defineConfig({
 	plugins: [
@@ -22,11 +25,7 @@ export default defineConfig({
 			name: "jose5-workerd-build",
 			enforce: "pre",
 			resolveId(source, importer) {
-				if (
-					source === "jose" &&
-					importer &&
-					/@atproto[+/](space|jwk)/.test(importer)
-				) {
+				if (source === "jose" && importer && jose5Importer.test(importer)) {
 					return jose5Browser;
 				}
 				return null;

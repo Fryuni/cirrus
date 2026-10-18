@@ -27,12 +27,15 @@ allowBuilds:
 # the broken one. Pin the whole family to the clean timestamp build. Nothing
 # else in this repo uses these packages, so a global override is safe.
 #
-# Overrides don't reach consumers of the published packages, so @getcirrus/pds,
-# @getcirrus/spaces and @getcirrus/space-conformance instead list the
-# intermediate alpha packages (@atproto/common, common-web, and for the
-# conformance suite oauth-client, xrpc, lexicon) as exact dependencies, which
-# package managers reuse when resolving @atproto/space's caret ranges. Bump
-# those pins in lockstep with @atproto/space.
+# Overrides don't reach consumers of the published packages. @getcirrus/spaces
+# and @getcirrus/oauth-provider inline every spaces-alpha package into their
+# builds (build/inline-spaces-alpha.ts), so their published manifests carry no
+# alpha ranges at all; the exact alpha pins in their devDependencies choose
+# which alpha gets inlined. @getcirrus/space-conformance still lists the
+# intermediate alpha packages (@atproto/common, common-web, oauth-client, xrpc,
+# lexicon) as exact dependencies, which npm and pnpm (but not Yarn) reuse when
+# resolving @atproto/space's caret ranges. Bump all of those pins in lockstep
+# with @atproto/space. See docs/fork-adr/0004-inline-spaces-alpha-deps.md.
 overrides:
   "@atproto/lex": "0.0.0-spaces-alpha-20260818163953"
   "@atproto/lex-resolver": "0.0.0-spaces-alpha-20260818163953"

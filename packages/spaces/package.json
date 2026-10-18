@@ -8,7 +8,10 @@
 		"dist"
 	],
 	"exports": {
-		".": "./dist/index.js"
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
 	},
 	"scripts": {
 		"build": "tsdown",
@@ -18,17 +21,22 @@
 	},
 	"dependencies": {
 		"@atcute/cid": "^2.3.0",
-		"@atproto/common": "0.0.0-spaces-alpha-20260818163953",
-		"@atproto/common-web": "0.0.0-spaces-alpha-20260818163953",
 		"@atproto/crypto": "^0.4.5",
 		"@atproto/lex-cbor": "^0.1.6",
 		"@atproto/lex-data": "^0.1.7",
 		"@atproto/lex-json": "^0.1.6",
-		"@atproto/space": "0.0.0-spaces-alpha-20260818163953",
 		"@atcute/tid": "^1.1.1",
 		"hono": "^4.11.3",
 		"@atcute/lexicons": "^1.2.6",
-		"jose": "^5.2.0"
+		"jose": "^5.2.0",
+		"@noble/curves": "^1.7.0",
+		"@noble/hashes": "^1.6.1",
+		"iso-datestring-validator": "^2.2.2",
+		"multiformats": "^13.0.0",
+		"pino": "^10.3.1",
+		"uint8arrays": "^5.0.0",
+		"varint": "^6.0.0",
+		"zod": "^3.23.8"
 	},
 	"devDependencies": {
 		"@arethetypeswrong/cli": "^0.18.2",
@@ -40,7 +48,10 @@
 		"typescript": "^5.9.3",
 		"vitest": "4.1.0-beta.1",
 		"wrangler": "^4.93.0",
-		"@getcirrus/space-conformance": "workspace:*"
+		"@getcirrus/space-conformance": "workspace:*",
+		"@atproto/common": "0.0.0-spaces-alpha-20260818163953",
+		"@atproto/common-web": "0.0.0-spaces-alpha-20260818163953",
+		"@atproto/space": "0.0.0-spaces-alpha-20260818163953"
 	},
 	"repository": {
 		"type": "git",
