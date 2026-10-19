@@ -1,0 +1,95 @@
+# Fork CI: builds, checks and tests every pull request and push to main. It
+# never publishes; publishing is publish.yml, on push to main only
+# (docs/fork-adr/0007-forgejo-ci-without-publishing.md). Forgejo ignores
+# .github/workflows, so this stands in for upstream's test.yml and e2e.yml.
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+# Forgejo only honours workflow-level concurrency. A new push to a pull request
+# supersedes its previous run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # Forgejo ignores `permissions:` and gives every step a repository write
+    # token. These steps run third-party code and never need it.
+    shell: env -u GITHUB_TOKEN -u FORGEJO_TOKEN -u ACTIONS_RUNTIME_TOKEN bash --noprofile --norc -eo pipefail {0}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: https://code.forgejo.org/actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: https://code.forgejo.org/actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+
+      # pnpm/action-setup has no mirror on this instance, and corepack's bundled
+      # signing keys lag behind pnpm releases, so install the pinned version.
+      - name: Install pnpm
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      # After Build: attw --pack needs dist.
+      - name: Check
+        run: pnpm run check
+
+      - name: Test
+        run: pnpm run test
+
+      - name: Knip
+        run: pnpm run knip
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: https://code.forgejo.org/actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: https://code.forgejo.org/actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+
+      - name: Install pnpm
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      # The runner's /etc/hosts maps localhost to 127.0.0.1 and ::1, but the
+      # container has no IPv6 beyond loopback. Vite listens on ::1, while Node
+      # clients look up with AI_ADDRCONFIG, get only 127.0.0.1 and are refused.
+      # /etc/hosts is bind-mounted, so rewrite it in place instead of `sed -i`.
+      - name: Map localhost to IPv4 only
+        run: |
+          hosts="$(sed -E '/^::1[[:space:]]/s/[[:space:]]localhost([[:space:]]|$)/\1/' /etc/hosts)"
+          printf '%s\n' "$hosts" | if [ "$(id -u)" = 0 ]; then tee /etc/hosts; else sudo tee /etc/hosts; fi > /dev/null
+          node -e 'require("node:dns").lookup("localhost", { all: true }, (e, a) => { if (e) throw e; console.log(a) })'
+
+      - name: E2E tests
+        run: pnpm --filter @getcirrus/pds test:e2e

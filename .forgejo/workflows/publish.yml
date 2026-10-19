@@ -1,19 +1,17 @@
 # Fork releases: every push to main publishes all public workspace packages to
 # the owner's Forgejo npm registry as <version>-fork.<N>, where N counts the
 # commits on the fork that are not on upstream (docs/fork-adr/0003-forgejo-package-releases.md).
-# Pull requests run the same build and a dry-run publish.
+# Pull requests never publish; they run ci.yml instead.
 name: Publish fork packages
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
   push:
     branches: [main]
 
 # Forgejo only honours workflow-level concurrency. Releases must not cancel each
 # other: a cancelled run would leave its fork number unpublished.
 concurrency:
-  group: publish-${{ github.event.pull_request.number || github.ref }}
+  group: publish-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -89,12 +87,10 @@ jobs:
       - name: Publish
         shell: bash --noprofile --norc -eo pipefail {0}
         env:
-          EVENT: ${{ github.event_name }}
           DIST_TAG: ${{ steps.fork.outputs.dist_tag }}
-          # Pull requests never see the token, even from branches on this repo.
-          PACKAGES_TOKEN: ${{ github.event_name == 'push' && secrets.PACKAGES_TOKEN || '' }}
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
         run: |
-          if [ "$EVENT" = push ] && [ -z "$PACKAGES_TOKEN" ]; then
+          if [ -z "$PACKAGES_TOKEN" ]; then
             echo "error: the PACKAGES_TOKEN secret (a token with write:package scope) is not set" >&2
             exit 1
           fi
@@ -103,22 +99,11 @@ jobs:
           {
             echo "registry=$registry"
             echo "@getcirrus:registry=$registry"
-            if [ -n "$PACKAGES_TOKEN" ]; then
-              echo "//${registry#*://}:_authToken=$PACKAGES_TOKEN"
-            fi
+            echo "//${registry#*://}:_authToken=$PACKAGES_TOKEN"
           } > "$npmrc"
-          publish() {
-            env -u GITHUB_TOKEN -u FORGEJO_TOKEN -u ACTIONS_RUNTIME_TOKEN NPM_CONFIG_USERCONFIG="$npmrc" \
-              pnpm publish --recursive --no-git-checks --ignore-scripts --tag "$DIST_TAG" "$@"
-          }
-
-          if [ "$EVENT" != push ]; then
-            # Pack every package, even versions main has already published.
-            publish --dry-run --force
-            exit 0
-          fi
           # Every version must be new before anything is published. --force
           # then stops pnpm from silently skipping a version that appeared
           # since: the registry rejects it and the run fails instead.
           REGISTRY="$registry" TOKEN="$PACKAGES_TOKEN" node .forgejo/ci/check-unpublished.mjs
-          publish --force
+          env -u GITHUB_TOKEN -u FORGEJO_TOKEN -u ACTIONS_RUNTIME_TOKEN NPM_CONFIG_USERCONFIG="$npmrc" \
+            pnpm publish --recursive --no-git-checks --ignore-scripts --tag "$DIST_TAG" --force
